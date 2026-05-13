@@ -65,7 +65,7 @@ export interface DispatchOptions {
   /**
    * When true, send a STOP to the script's MAV_CMD_USER_1 dispatcher BEFORE
    * issuing the actual command. Used when transitioning from a script-managed
-   * command (orbit / spiral / POI / watchtower / climb-RTL) to a native one
+   * command (orbit / spiral / POI / watchtower / climb-in-place) to a native one
    * (Move / Land) — the script's per-tick set_target_location would otherwise
    * keep overriding the new native target. Caller (popup) sets this based on
    * the previously-active target type.
@@ -146,7 +146,7 @@ export async function dispatchMapCommand(
       return { success: ok, path: 'script' };
     }
     case 'climbRtl': {
-      // Climb-then-RTL: vehicle uses its own current lat/lon; we just send
+      // Climb in place: vehicle uses its own current lat/lon; we just send
       // target altitude. Sending 0,0 for lat/lon works because the script
       // reads ahrs:get_location() rather than trusting the message coords.
       if (!window.electronAPI.mavlinkUserCommand) {

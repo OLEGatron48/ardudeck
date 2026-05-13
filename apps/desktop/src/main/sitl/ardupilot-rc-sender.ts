@@ -108,7 +108,6 @@ class ArduPilotRcSender {
       aux3: -1,
       aux4: -1,
     };
-    console.log('[ArduPilot RC] throttle variable = -1 (norm) | CH3 PWM = 1000 (reset)');
   }
 
   /**
@@ -150,9 +149,7 @@ class ArduPilotRcSender {
       this.lastThrottleConsoleLogAt = now;
       const t = this.rcState.throttle;
       const ch3 = channels[2]!;
-      console.log(
-        `[ArduPilot RC] throttle variable rcState.throttle = ${t} (norm -1…1) | CH3 PWM = ${ch3} (µs to SITL)`,
-      );
+
     }
 
     // Write channels as little-endian uint16

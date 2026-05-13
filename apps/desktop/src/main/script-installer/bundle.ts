@@ -72,9 +72,9 @@ export function getScriptBundle(): ScriptBundle {
       },
       {
         name: 'CLIMB_RTL',
-        label: 'Climb + RTL',
+        label: 'Climb in place',
         description:
-          'Climbs the vehicle in place to a safe altitude before the FC switches to RTL for the actual return. Solves the "RTL into a tree" problem when current altitude is below RTL_ALT or the home path is blocked.',
+          'Climbs the vehicle in place on its current position to a target relative altitude, then stops the script while the FC stays in Guided at that anchor.',
         trigger: USER_CMD.AD,
         subId: SUB_CMD.CLIMB_RTL,
         paramSchema:

@@ -787,7 +787,7 @@ let paramDownloadStartTime = 0; // Timestamp for measuring download duration
 let ftpClient: MavlinkFtpClient | null = null;
 let paramRequestInFlight = false; // Guard against concurrent param download requests
 let logDownloadManager: LogDownloadManager | null = null;
-/** One-shot SITL copter battery/arming PARAM_SET pass after param download. */
+/** One-shot SITL copter session PARAM_SET pass after param download. */
 let sitlCopterBatteryTuneApplied = false;
 
 // In-flight one-shot PARAM_REQUEST_READ callbacks keyed by paramId. The
@@ -834,9 +834,10 @@ function isCopterFamilyMavType(mavType: number): boolean {
 }
 
 /**
- * After parameters are downloaded, push battery / arming tweaks over MAVLink so
- * they win over stale SITL eeprom.bin (which overrides --defaults on boot).
- * Only runs once per MAVLink session for ArduPilot SITL + copter-class vehicles.
+ * After parameters are downloaded, push battery / arming / fence / failsafe
+ * tweaks over MAVLink so they win over stale SITL eeprom.bin (which overrides
+ * --defaults on boot). Only runs once per MAVLink session for ArduPilot SITL +
+ * copter-class vehicles.
  */
 async function maybeApplySitlCopterBatteryTune(mainWindow: BrowserWindow): Promise<void> {
   if (sitlCopterBatteryTuneApplied) return;
@@ -893,7 +894,7 @@ async function maybeApplySitlCopterBatteryTune(mainWindow: BrowserWindow): Promi
     }
   };
 
-  sendLog(mainWindow, 'info', 'SITL: applying battery/arming MAVLink tweaks (overrides stale EEPROM for this session)…');
+  sendLog(mainWindow, 'info', 'SITL: applying session-safe MAVLink tweaks (battery, fence, failsafe; overrides stale EEPROM)…');
 
   // Pack thresholds well below a healthy sim voltage; SIM_* nudged upward.
   await paramSetFromCache('BATT_LOW_VOLT', 6);
@@ -910,6 +911,30 @@ async function maybeApplySitlCopterBatteryTune(mainWindow: BrowserWindow): Promi
   await paramSetFromCache('ARMING_MIN_VOLT', 0);
   await paramSetFromCache('BATT_FS_LOW_ACT', 0);
 
+  // Geofence + mode channel: stale eeprom.bin often leaves FENCE_ENABLE=1 and
+  // FENCE_ACTION=RTL → climb stops ~fence ceiling and switches to RTL; PreArm
+  // shows "Fence enabled, need position estimate". Force safe sim defaults.
+  const fenceFailsafePairs: Array<[string, number, number]> = [
+    ['FENCE_ENABLE', 0, 2],
+    ['FENCE_AUTOENABLE', 0, 2],
+    ['FENCE_ACTION', 0, 2],
+    ['FLTMODE_CH', 0, 2],
+    ['FS_GCS_ENABLE', 0, 2],
+    ['THR_FAILSAFE', 0, 2],
+    ['FS_SHORT_ACTN', 0, 2],
+    ['FS_LONG_ACTN', 0, 2],
+  ];
+  for (const [pid, val, typ] of fenceFailsafePairs) {
+    if (!(await paramSetFromCache(pid, val))) {
+      await paramSetBlind(pid, val, typ);
+    }
+  }
+  if (receivedParams.has('FENCE_ALT_MAX')) {
+    await paramSetFromCache('FENCE_ALT_MAX', 500);
+  } else {
+    await paramSetBlind('FENCE_ALT_MAX', 500, 9); // REAL32 — high ceiling if max-alt fence type is enabled
+  }
+
   // Builds that omit the above IDs — still try common alternates (FC ignores unknown ids).
   if (!receivedParams.has('ARMING_MIN_VOLT')) {
     await paramSetBlind('ARMING_MIN_VOLT', 0, 9); // REAL32
@@ -919,7 +944,7 @@ async function maybeApplySitlCopterBatteryTune(mainWindow: BrowserWindow): Promi
     await paramSetBlind('FS_BATT_ENABLE', 0, 2); // INT8
   }
 
-  sendLog(mainWindow, 'info', 'SITL: battery/arming tweak pass complete');
+  sendLog(mainWindow, 'info', 'SITL: session tweak pass complete');
 }
 
 // Parameter metadata cache (keyed by vehicle type)

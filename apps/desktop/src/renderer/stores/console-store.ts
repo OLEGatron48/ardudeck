@@ -4,6 +4,11 @@ import { useSettingsStore } from './settings-store';
 
 const MAX_LOG_ENTRIES = 500;
 
+/** Monotonic keys for the renderer list — main process uses several independent
+ *  `++logId` counters (ipc-handlers, MSP context, unified-logger, …), so raw
+ *  `entry.id` values collide and React warns every time a duplicate appears. */
+let nextConsoleListId = 1;
+
 interface ConsoleStore {
   logs: ConsoleLogEntry[];
   isExpanded: boolean;
@@ -27,7 +32,10 @@ export const useConsoleStore = create<ConsoleStore>((set) => ({
       return;
     }
     set((state) => ({
-      logs: [...state.logs.slice(-(MAX_LOG_ENTRIES - 1)), entry],
+      logs: [
+        ...state.logs.slice(-(MAX_LOG_ENTRIES - 1)),
+        { ...entry, id: nextConsoleListId++ },
+      ],
     }));
   },
 

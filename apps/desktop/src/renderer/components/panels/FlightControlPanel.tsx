@@ -761,10 +761,6 @@ function MavlinkFlightControl() {
           setTimeout(() => setStatusMsg(null), 6000);
           return;
         }
-        if (didPrependTakeoff) {
-          useMissionStore.setState({ missionItems: missionForAuto });
-        }
-
         preparedMavlinkMission = missionForAuto;
 
         const wpRes = await window.electronAPI?.setCurrentWaypoint?.(0);
@@ -797,7 +793,6 @@ function MavlinkFlightControl() {
         pm.length > 0;
 
       if (guidedTakeoffThenAuto) {
-        console.log('guidedTakeoffThenAuto', guidedTakeoffThenAuto);
         const guidedAltM = Math.max(3, Math.round(getMissionGuidedTakeoffAltitudeM(pm)));
         const resumeMissionIdx = getAutoMissionResumeIndexAfterGuidedTakeoff(pm);
 
@@ -829,21 +824,12 @@ function MavlinkFlightControl() {
           waitForState,
         });
 
+        console.log('takeoffResult', takeoffResult);
+
         if (!takeoffResult.ok) {
           setStatusMsg({ text: takeoffResult.reason, type: 'error' });
           setTimeout(() => setStatusMsg(null), 6000);
           return;
-        }
-
-        setStatusMsg({ text: 'Skipping mission takeoff leg — resuming at route…', type: 'info' });
-        const wpResume = await window.electronAPI?.setCurrentWaypoint?.(resumeMissionIdx);
-        if (wpResume && !wpResume.success) {
-          setStatusMsg({
-            text: `Climb OK — could not set MISSION_CURRENT=${resumeMissionIdx} (${wpResume.error ?? 'unknown'})`,
-            type: 'info',
-          });
-          await new Promise((r) => setTimeout(r, 2500));
-          setStatusMsg(null);
         }
 
         setStatusMsg({ text: 'Switching to AUTO…', type: 'info' });
@@ -861,6 +847,17 @@ function MavlinkFlightControl() {
           setStatusMsg({ text: 'Failed to enter AUTO — check mode mapping / PreArm', type: 'error' });
           setTimeout(() => setStatusMsg(null), 6000);
           return;
+        }
+
+        setStatusMsg({ text: 'AUTO active — resuming mission route…', type: 'info' });
+        const wpResume = await window.electronAPI?.setCurrentWaypoint?.(resumeMissionIdx);
+        if (wpResume && !wpResume.success) {
+          setStatusMsg({
+            text: `AUTO active — could not set MISSION_CURRENT=${resumeMissionIdx} (${wpResume.error ?? 'unknown'})`,
+            type: 'info',
+          });
+          await new Promise((r) => setTimeout(r, 2500));
+          setStatusMsg(null);
         }
 
         if (!useTelemetryStore.getState().flight.armed) {

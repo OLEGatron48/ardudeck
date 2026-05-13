@@ -74,7 +74,7 @@ local MAV_CMD_USER_1  = 31010
 local SUB_CMD_ORBIT       = 0
 local SUB_CMD_SPIRAL      = 1
 local SUB_CMD_WATCHTOWER  = 3  -- hover at clicked point, slow 360 yaw rotation
-local SUB_CMD_CLIMB_RTL   = 4  -- climb in place to safe alt, then RTL
+local SUB_CMD_CLIMB_RTL   = 4  -- climb in place to target alt, then hold (Guided)
 local SUB_CMD_REVEAL      = 5  -- pull back + climb, yaw locked to clicked target
 local SUB_CMD_STRAFE      = 6  -- dolly past clicked target at perp offset
 local SUB_CMD_LAND_AT     = 7  -- fly to clicked point at current alt, then LAND
@@ -83,7 +83,6 @@ local SUB_CMD_STOP        = 255 -- deactivate any active command (frees the
 
 -- Flight mode numbers (ArduCopter)
 local COPTER_MODE_GUIDED = 4   -- ensure_guided() switches to this before any cmd
-local COPTER_MODE_RTL    = 6
 local COPTER_MODE_LAND   = 9
 
 local hb_counter = 0
@@ -444,24 +443,21 @@ local function step_watchtower(now_ms)
   safe_set_pos_ned_with_yaw(cmd_state.center, cmd_state.current_yaw_deg)
 end
 
--- Climb-then-RTL: command vehicle to current lat/lon at target altitude.
--- Once reached (within 2 m), switch the FC to RTL mode.
+-- Climb in place: command vehicle to current lat/lon at target altitude.
+-- Once reached (within 2 m), stop the script — vehicle stays in Guided.
 local function step_climb_rtl(_now_ms)
   if cmd_state.center == nil then return end
   safe_set_target_location(cmd_state.center)
-  -- Check if we've reached safe altitude.
+  -- Check if we've reached target altitude.
   local here = ahrs:get_location()
   if here == nil then return end
   local home = ahrs:get_home()
   if home == nil then return end
   local current_rel_alt = (here:alt() - home:alt()) / 100
   if math.abs(current_rel_alt - cmd_state.target_alt_m) < 2 then
-    -- Switch to RTL. vehicle:set_mode returns boolean.
-    local ok = pcall(vehicle.set_mode, vehicle, COPTER_MODE_RTL)
-    if ok then
-      gcs:send_text(6, string.format('ArduDeck CLIMB_RTL: at %.1fm, switching to RTL', current_rel_alt))
-      cmd_state.active = false
-    end
+    gcs:send_text(6, string.format(
+      'ArduDeck CLIMB_RTL: reached %.1fm — holding (Guided)', current_rel_alt))
+    cmd_state.active = false
   end
 end
 
@@ -547,7 +543,7 @@ end
 -- which descends in place — it does NOT respect the lat/lon supplied. To land
 -- AT a specific clicked point we fly there in GUIDED first, then switch to
 -- LAND mode once close. Same pattern as CLIMB_RTL but reversed (move-then-
--- mode-change instead of climb-then-mode-change).
+-- mode-change instead of climb-then-release).
 local function step_land_at(_now_ms)
   if cmd_state.center == nil then return end
   safe_set_target_location(cmd_state.center)
@@ -599,9 +595,8 @@ local function start_watchtower(c)
     c.z, rate))
 end
 
--- Climb-then-RTL: command vehicle to climb in place to a safe altitude, then
--- the FC switches to RTL for the actual return. Solves "RTL into a tree"
--- when current alt is below RTL_ALT.
+-- Climb in place: vehicle climbs on its current lat/lon to z (relative AGL),
+-- then the script stops; the FC remains in Guided at the anchor.
 -- Params: z = target relative altitude (m). x/y are ignored - we use the
 --         vehicle's current lat/lon as the climb anchor.
 local function start_climb_rtl(c)
@@ -621,7 +616,7 @@ local function start_climb_rtl(c)
   cmd_state.target_alt_m = c.z
   cmd_state.last_step_ms = millis():tofloat()
   cmd_state.active       = true
-  gcs:send_text(6, string.format('ArduDeck CLIMB_RTL: climbing to %.1fm then RTL', c.z))
+  gcs:send_text(6, string.format('ArduDeck CLIMB_RTL: climbing to %.1fm (Guided hold)', c.z))
 end
 
 -- Reveal: pull back from the vehicle's current position along the away-from-

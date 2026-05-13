@@ -238,6 +238,7 @@ async function waitForTakeoffRelativeAlt(
   }, 500);
   const ok = await ctx.waitForState(reached, TAKEOFF_CLIMB_TIMEOUT_MS, 250);
   clearInterval(tick);
+  console.log('ok', ok);
   const rel = ctx.getPosition().relativeAlt;
   return ok
     ? { ok: true }
@@ -264,6 +265,20 @@ async function takeoffCopter(ctx: TakeoffContext): Promise<TakeoffOutcome> {
   const gps = await ensureGpsReady(ctx);
   if (!gps.ok) return gps;
 
+  // SITL: stable virtual RC before mode changes — avoids FLTMODE PWM noise → RTL mid-climb.
+  if (ctx.isSitl) {
+    try {
+      await ctx.api.sitlRcStart();
+      await ctx.api.sitlRcSend({
+        throttle: -1,
+        roll: 0, pitch: 0, yaw: 0,
+        aux1: -1, aux2: -1, aux3: -1, aux4: -1,
+      });
+    } catch {
+      /* IPC optional when not SITL */
+    }
+  }
+
   const stab = await switchMode(ctx, ctx.capabilities.stabilizeModeNum, 'Stabilize');
   if (!stab.ok) return stab;
 
@@ -280,7 +295,7 @@ async function takeoffCopter(ctx: TakeoffContext): Promise<TakeoffOutcome> {
   ctx.setStatus({ text: `Taking off to ${ctx.altitudeM}m...`, type: 'info' });
   const sent = await ctx.api.mavlinkTakeoff(ctx.altitudeM);
   if (!sent) return { ok: false, reason: 'Takeoff command failed' };
-  return waitForTakeoffRelativeAlt(ctx, ctx.altitudeM);
+  return await waitForTakeoffRelativeAlt(ctx, ctx.altitudeM);
 }
 
 /**
@@ -375,9 +390,8 @@ async function takeoffVtolRealHw(ctx: TakeoffContext): Promise<TakeoffOutcome> {
 
   ctx.setStatus({ text: `Vertical takeoff to ${ctx.altitudeM}m…`, type: 'info' });
   const ok = await ctx.api.mavlinkVtolTakeoff(ctx.altitudeM);
-  return ok
-    ? { ok: true }
-    : { ok: false, reason: 'VTOL takeoff command failed' };
+  if (!ok) return { ok: false, reason: 'VTOL takeoff command failed' };
+  return waitForTakeoffRelativeAlt(ctx, ctx.altitudeM);
 }
 
 /**
@@ -425,12 +439,11 @@ async function takeoffVtolSitl(ctx: TakeoffContext): Promise<TakeoffOutcome> {
   ctx.setStatus({ text: `Climbing to ${ctx.altitudeM}m…`, type: 'info' });
   await ctx.api.sitlRcSend(sticks({ throttle: 0.7 }));
 
-  // Wait for relative altitude to reach 90% of target. Reads from
+  // Wait for relative altitude to reach the requested target. Reads from
   // PositionData.relativeAlt (m above home) which is the same field the
   // panel surfaces as "Rel".
-  const TARGET_FRAC = 0.9;
   const reached = await ctx.waitForState(() => {
-    return Math.abs(ctx.getPosition().relativeAlt) >= ctx.altitudeM * TARGET_FRAC;
+    return ctx.getPosition().relativeAlt >= ctx.altitudeM - TAKEOFF_ALT_TOLERANCE_M;
   }, 25_000, 250);
 
   // Hold altitude regardless of outcome — mid-stick = QHover position hold.

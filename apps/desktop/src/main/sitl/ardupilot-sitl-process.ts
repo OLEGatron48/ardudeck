@@ -75,7 +75,16 @@ function generateDefaultParams(
     lines.push('THR_FAILSAFE      0');
     lines.push('FS_SHORT_ACTN     0');
     lines.push('FS_LONG_ACTN      0');
+    lines.push('FS_GCS_ENABLE     0');
+    // Without a bound RC input, upstream autotest defaults can leave FLTMODE_CH
+    // mapped so stale/no UDP RC looks like a mode switch (e.g. RTL mid-climb).
+    // 0 = do not use an RC channel for flight mode (GCS / MAVLink modes only).
+    lines.push('FLTMODE_CH        0');
     lines.push('FENCE_ENABLE      0');
+    // If fence is ever on, never RTL from breach in sim (stale EEPROM often sets RTL).
+    lines.push('FENCE_ACTION      0');
+    lines.push('FENCE_AUTOENABLE  0');
+    lines.push('FENCE_ALT_MAX     500');
     // Mission vertical rates: stock WPNAV_SPEED_DN is much slower than UP, so
     // after a high takeoff leg the copter can appear to "keep climbing" toward
     // the next item while descending is barely visible. Match up/down in SITL.
@@ -185,6 +194,7 @@ function generateDefaultParams(
     lines.push('THR_FAILSAFE    0');
     lines.push('FS_SHORT_ACTN   0');
     lines.push('FS_LONG_ACTN    0');
+    lines.push('FS_GCS_ENABLE   0');
 
     // TAKEOFF mode tuning so the plane actually climbs when mode switches
     // to TAKEOFF (13). Without these, plane ground-rolls forever without

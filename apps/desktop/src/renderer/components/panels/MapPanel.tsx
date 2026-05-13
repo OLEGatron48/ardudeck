@@ -1698,7 +1698,7 @@ const TelemetryMap2D = React.memo(function TelemetryMap2D() {
   // here so we don't duplicate that decision.
   //
   // Script→Native handoff: if the previously-active target was script-managed
-  // (orbit / spiral / POI / watchtower / climb-RTL) the script keeps pushing
+  // (orbit / spiral / POI / watchtower / climb-in-place) the script keeps pushing
   // set_target_location every tick. Any subsequent NATIVE command (Move /
   // Land / native DO_ORBIT) will appear ignored unless we first send STOP to
   // the script's USER_1 dispatcher. We do this transparently here based on
@@ -1760,7 +1760,7 @@ const TelemetryMap2D = React.memo(function TelemetryMap2D() {
   // Clear active target based on command type:
   //  - goto:  mode != GUIDED, OR vehicle within 5m of target (arrived)
   //  - orbit/spiral/watchtower: mode != GUIDED (script keeps running otherwise)
-  //  - climbRtl: mode != GUIDED && != RTL (RTL is the expected next mode)
+  //  - climbRtl: mode != GUIDED && != RTL (clear if pilot leaves Guided or goes RTL manually)
   //  - land:  mode != GUIDED && mode != LAND (LAND is the expected next mode)
   useEffect(() => {
     if (!activeTarget) return;

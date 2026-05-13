@@ -52,7 +52,7 @@ interface LuaCommandMeta {
   label: string;
   hint: string;
   confirmLabel: string;
-  /** True if the command needs a clicked map location (most do; CLIMB_RTL doesn't). */
+  /** True if the command needs a clicked map location (most do; climb-in-place doesn't). */
   needsLatLon: boolean;
   category: LuaCategory;
   icon: LucideIcon;
@@ -66,7 +66,7 @@ const LUA_COMMANDS: LuaCommandMeta[] = [
   { id: 'watchtower', label: 'Watchtower', hint: 'Hover at this point and slowly rotate yaw for a panoramic',     confirmLabel: 'Confirm Watchtower', needsLatLon: true,  category: 'hold',      icon: Eye,              supportedClasses: ['copter', 'vtol'] },
   { id: 'reveal',     label: 'Reveal',     hint: 'Pull back + climb, camera locked on this target (cinematic)',   confirmLabel: 'Confirm Reveal',     needsLatLon: true,  category: 'cinematic', icon: Film,             supportedClasses: ['copter', 'vtol'] },
   { id: 'strafe',     label: 'Strafe',     hint: 'Dolly past this target at perpendicular offset, looking at it', confirmLabel: 'Confirm Strafe',     needsLatLon: true,  category: 'cinematic', icon: MoveHorizontal,   supportedClasses: ['copter', 'vtol'] },
-  { id: 'climbRtl',   label: 'Climb+RTL',  hint: 'Climb in place to a safe altitude, then return home',           confirmLabel: 'Climb & RTL',        needsLatLon: false, category: 'return',    icon: ArrowUpFromLine,  supportedClasses: ['copter', 'vtol'] },
+  { id: 'climbRtl',   label: 'Climb in place', hint: 'Climb vertically on current position, then hold in Guided', confirmLabel: 'Climb',              needsLatLon: false, category: 'hold',      icon: ArrowUpFromLine,  supportedClasses: ['copter', 'vtol'] },
 ];
 
 const CATEGORY_LABELS: Record<LuaCategory, string> = {
@@ -106,7 +106,7 @@ export const MapCommandPopup: React.FC<MapCommandPopupProps> = ({
   const [climbRate, setClimbRate] = useState(1.5);
   // Watchtower-only
   const [yawRate, setYawRate] = useState(30);
-  // Climb+RTL-only
+  // Climb-in-place-only
   const [climbRtlAlt, setClimbRtlAlt] = useState(Math.max(Math.round(currentAltAgl) + 30, 50));
   // Reveal-only
   const [revealPullback, setRevealPullback] = useState(40);
@@ -437,7 +437,7 @@ export const MapCommandPopup: React.FC<MapCommandPopupProps> = ({
         </>
       )}
 
-      {/* === CLIMB+RTL === target altitude only === */}
+      {/* === Climb in place === target altitude only === */}
       {tabId === 'lua' && luaCmd === 'climbRtl' && (
         <>
           <Field label="Climb to">
@@ -445,7 +445,7 @@ export const MapCommandPopup: React.FC<MapCommandPopupProps> = ({
             <Suffix>m AGL ({climbRtlAlt > currentAltAgl ? `↑ +${Math.round(climbRtlAlt - currentAltAgl)}m` : 'already higher'})</Suffix>
           </Field>
           <div className="mb-2 px-2 py-1 rounded text-[10px] text-violet-200 bg-violet-900/30 border border-violet-700/40">
-            Vehicle climbs in place, then FC switches to RTL mode for return.
+            Vehicle climbs in place, then holds in Guided at that altitude.
           </div>
         </>
       )}
