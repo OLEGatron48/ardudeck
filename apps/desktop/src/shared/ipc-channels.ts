@@ -376,6 +376,11 @@ export const IPC_CHANNELS = {
   ARDUPILOT_SITL_LIST_FRAMES: 'ardupilot-sitl:list-frames',
   ARDUPILOT_SITL_REFRESH_FRAMES: 'ardupilot-sitl:refresh-frames',
 
+  // Gazebo Python bridge (attach visualisation to an already-running FC/SITL)
+  GAZEBO_BRIDGE_START: 'gazebo-bridge:start',
+  GAZEBO_BRIDGE_STOP: 'gazebo-bridge:stop',
+  GAZEBO_BRIDGE_STATUS: 'gazebo-bridge:status',
+
   // SITL custom frames (user-authored JSON physics models)
   ARDUPILOT_SITL_CUSTOM_FRAME_LIST: 'ardupilot-sitl:custom-frame-list',
   ARDUPILOT_SITL_CUSTOM_FRAME_LOAD: 'ardupilot-sitl:custom-frame-load',
@@ -1144,7 +1149,8 @@ export type ArduPilotReleaseTrack = 'stable' | 'beta' | 'dev';
 /**
  * ArduPilot SITL simulator type
  */
-export type ArduPilotSimulatorType = 'jsbsim' | 'xplane' | 'none';
+/** External physics: `gazebo` = ArduPilot SITL ↔ Gazebo plugin (see --sim / --sim-address). */
+export type ArduPilotSimulatorType = 'jsbsim' | 'xplane' | 'gazebo' | 'none';
 
 /**
  * ArduPilot SITL configuration
@@ -1211,6 +1217,33 @@ export interface ArduPilotSitlStatus {
   vehicleType?: ArduPilotVehicleType;
   /** Port number SITL is listening on */
   tcpPort?: number;
+}
+
+export type GazeboBridgeSource = 'telemetry' | 'mavlink';
+export type GazeboBridgeOutput = 'udp-json' | 'stdout';
+
+export interface GazeboBridgeConfig {
+  /**
+   * telemetry = ArduDeck streams current FC/SITL telemetry into the Python
+   * process over stdin. This works with a real drone already connected to the
+   * app. mavlink = Python connects as a second MAVLink client, useful for
+   * local SITL on tcp:127.0.0.1:5760.
+   */
+  source: GazeboBridgeSource;
+  /** pymavlink connection string when source === 'mavlink'. */
+  mavlinkUrl?: string;
+  /** Where the Python bridge should publish pose updates for the Gazebo side. */
+  output: GazeboBridgeOutput;
+  gazeboHost: string;
+  gazeboPort: number;
+  modelName: string;
+  rateHz?: number;
+}
+
+export interface GazeboBridgeStatus {
+  running: boolean;
+  pid?: number;
+  config?: GazeboBridgeConfig;
 }
 
 /**

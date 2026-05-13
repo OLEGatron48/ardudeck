@@ -4,7 +4,7 @@
  */
 
 import { contextBridge, ipcRenderer } from 'electron';
-import { IPC_CHANNELS, type ConnectOptions, type ConnectionState, type ConsoleLogEntry, type SavedLayout, type SettingsStoreSchema, type MSPConnectOptions, type MSPConnectionState, type MSPTelemetryData, type SitlConfig, type SitlStatus, type SitlExitData, type VirtualRCState, type ArduPilotSitlConfig, type ArduPilotSitlStatus, type ArduPilotSitlExitData, type ArduPilotSitlDownloadProgress, type ArduPilotSitlBinaryInfo, type ArduPilotFrameCatalog, type ArduPilotVehicleType, type ArduPilotReleaseTrack, type AppUpdateInfo, type SigningStatus, type TelemetrySpeed, type StatusMessage, type TileCacheStats, type TileCacheDownloadProgress, type TileCacheSettings, type TileCacheDownloadRegion, type CompanionConnectOptions, type CompanionConnectionIpcState, type CompanionDiscoveryResult } from '../shared/ipc-channels.js';
+import { IPC_CHANNELS, type ConnectOptions, type ConnectionState, type ConsoleLogEntry, type SavedLayout, type SettingsStoreSchema, type MSPConnectOptions, type MSPConnectionState, type MSPTelemetryData, type SitlConfig, type SitlStatus, type SitlExitData, type VirtualRCState, type ArduPilotSitlConfig, type ArduPilotSitlStatus, type ArduPilotSitlExitData, type ArduPilotSitlDownloadProgress, type ArduPilotSitlBinaryInfo, type ArduPilotFrameCatalog, type ArduPilotVehicleType, type ArduPilotReleaseTrack, type GazeboBridgeConfig, type GazeboBridgeStatus, type AppUpdateInfo, type SigningStatus, type TelemetrySpeed, type StatusMessage, type TileCacheStats, type TileCacheDownloadProgress, type TileCacheSettings, type TileCacheDownloadRegion, type CompanionConnectOptions, type CompanionConnectionIpcState, type CompanionDiscoveryResult } from '../shared/ipc-channels.js';
 import type { SystemInfo, NetworkInfo, MetricsData, ProcessInfo, LogEntry, FileEntry, ServiceInfo, ServiceAction, ContainerInfo, ContainerAction, ExtensionInfo } from '@ardudeck/companion-types';
 import type { InstalledModule, ModuleProgress, UpdateAvailable } from '../shared/module-types.js';
 import type { ParamChange, ParamCheckpoint } from '../shared/param-history-types.js';
@@ -1285,6 +1285,15 @@ const api = {
 
   ardupilotSitlRefreshFrames: (): Promise<ArduPilotFrameCatalog> =>
     ipcRenderer.invoke(IPC_CHANNELS.ARDUPILOT_SITL_REFRESH_FRAMES),
+
+  gazeboBridgeStart: (config: GazeboBridgeConfig): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GAZEBO_BRIDGE_START, config),
+
+  gazeboBridgeStop: (): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GAZEBO_BRIDGE_STOP),
+
+  gazeboBridgeStatus: (): Promise<GazeboBridgeStatus> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GAZEBO_BRIDGE_STATUS),
 
   // SITL custom frames
   ardupilotSitlCustomFrameList: () =>

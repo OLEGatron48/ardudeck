@@ -18,6 +18,7 @@ import {
   type ScanResult,
 } from '@ardudeck/comms';
 import { publishTelemetryToPythonPlugins, cleanupPythonPlugins } from './python/python-ipc.js';
+import { gazeboBridgeManager } from './gazebo/gazebo-bridge-manager.js';
 import { registerCompanionIpcHandlers } from './companion/companion-ipc-handlers.js';
 import { registerDroneBridgeIpcHandlers } from './dronebridge/dronebridge-ipc-handlers.js';
 import { setupOverlayHandlers, getApiKey } from './overlays/overlay-ipc-handlers.js';
@@ -159,7 +160,7 @@ import {
   type BridgeConfig,
   type VirtualRCState,
 } from './simulators/index.js';
-import type { SitlConfig, SitlStatus, ArduPilotSitlConfig, ArduPilotSitlStatus, ArduPilotVehicleType, ArduPilotReleaseTrack, ArduPilotSitlBinaryInfo } from '../shared/ipc-channels.js';
+import type { SitlConfig, SitlStatus, ArduPilotSitlConfig, ArduPilotSitlStatus, ArduPilotVehicleType, ArduPilotReleaseTrack, ArduPilotSitlBinaryInfo, GazeboBridgeConfig, GazeboBridgeStatus } from '../shared/ipc-channels.js';
 
 // =============================================================================
 // Legacy Board Detection
@@ -722,6 +723,7 @@ function queueMavlinkTelemetry(mainWindow: BrowserWindow, fields: Record<string,
     mavlinkBatchTimer = setTimeout(() => {
       safeSend(mainWindow, IPC_CHANNELS.TELEMETRY_BATCH, mavlinkTelemetryBatch);
       publishTelemetryToPythonPlugins(mavlinkTelemetryBatch);
+      gazeboBridgeManager.pushTelemetry(mavlinkTelemetryBatch);
       mavlinkTelemetryBatch = {};
       mavlinkBatchTimer = null;
     }, 100); // 10Hz max
@@ -7848,6 +7850,33 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     return ardupilotSitlProcess.getStatus();
   });
 
+  gazeboBridgeManager.on('log', (level, line) => {
+    sendLog(mainWindow, level === 'error' ? 'error' : 'info', 'Gazebo bridge', line);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GAZEBO_BRIDGE_START, async (_event, config: GazeboBridgeConfig): Promise<{ success: boolean; error?: string }> => {
+    const result = await gazeboBridgeManager.start(config);
+    if (result.success) {
+      sendLog(mainWindow, 'info', 'Gazebo bridge started', `${config.source} → ${config.output} ${config.gazeboHost}:${config.gazeboPort}`);
+    }
+    return result;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GAZEBO_BRIDGE_STOP, async (): Promise<{ success: boolean }> => {
+    try {
+      await gazeboBridgeManager.stop();
+      sendLog(mainWindow, 'info', 'Gazebo bridge stopped');
+      return { success: true };
+    } catch (error) {
+      sendLog(mainWindow, 'error', 'Failed to stop Gazebo bridge', error instanceof Error ? error.message : String(error));
+      return { success: false };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GAZEBO_BRIDGE_STATUS, async (): Promise<GazeboBridgeStatus> => {
+    return gazeboBridgeManager.status();
+  });
+
   // Download ArduPilot SITL binary
   ipcMain.handle(IPC_CHANNELS.ARDUPILOT_SITL_DOWNLOAD, async (
     _event,
@@ -9193,6 +9222,12 @@ export async function cleanupOnShutdown(): Promise<void> {
     await cleanupPythonPlugins();
   } catch (err) {
     console.warn('[Shutdown] Error stopping Python plugins:', err);
+  }
+
+  try {
+    await gazeboBridgeManager.stop();
+  } catch (err) {
+    console.warn('[Shutdown] Error stopping Gazebo bridge:', err);
   }
 
   // Reset state

@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useCallback, useState } from 'react';
 import { useArduPilotSitlStore, ARDUPILOT_MODELS } from '../../stores/ardupilot-sitl-store';
 import { useConnectionStore } from '../../stores/connection-store';
 import { useSettingsStore } from '../../stores/settings-store';
-import type { VirtualRCState, ArduPilotVehicleType, ArduPilotReleaseTrack, ArduPilotFrameInfo } from '../../../shared/ipc-channels';
+import type { VirtualRCState, ArduPilotVehicleType, ArduPilotReleaseTrack, ArduPilotFrameInfo, ArduPilotSimulatorType, GazeboBridgeStatus } from '../../../shared/ipc-channels';
 import { getIpLocation } from '../../utils/ip-geolocation';
 import SitlEnvironmentPanel from './SitlEnvironmentPanel';
 import SitlFailurePanel from './SitlFailurePanel';
@@ -49,6 +49,8 @@ export default function ArduPilotSitlTab() {
     lastError,
     isRcSending,
     rcState,
+    simulator,
+    simAddress,
     framesLoading,
     framesCatalog,
     crashRecovery,
@@ -64,6 +66,8 @@ export default function ArduPilotSitlTab() {
     setHomeLocation,
     setSpeedup,
     setWipeOnStart,
+    setSimulator,
+    setSimAddress,
     startRcSender,
     stopRcSender,
     setRcState,
@@ -79,10 +83,16 @@ export default function ArduPilotSitlTab() {
   const { connectionState } = useConnectionStore();
   const { setPendingSitlSwitch } = useSettingsStore();
   const outputRef = useRef<HTMLDivElement>(null);
+  const simAddressInputRef = useRef<HTMLInputElement>(null);
 
   // Geolocation state
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [gazeboBridgeStatus, setGazeboBridgeStatus] = useState<GazeboBridgeStatus>({ running: false });
+  const [gazeboBridgeError, setGazeboBridgeError] = useState<string | null>(null);
+  const [gazeboHost, setGazeboHost] = useState('127.0.0.1');
+  const [gazeboPort, setGazeboPort] = useState(9002);
+  const [gazeboModelName, setGazeboModelName] = useState('ardudeck_vehicle');
 
   // Resolve the user's approximate location via the shared fallback chain:
   // IP geolocation (no permission needed) → browser geolocation → default.
@@ -114,9 +124,39 @@ export default function ArduPilotSitlTab() {
   // Initialize listeners and check status on mount
   useEffect(() => {
     checkStatus();
+    window.electronAPI.gazeboBridgeStatus()
+      .then(setGazeboBridgeStatus)
+      .catch(() => {});
     const cleanup = initListeners();
     return cleanup;
   }, [initListeners, checkStatus]);
+
+  const canAttachGazebo = connectionState.isConnected || isRunning;
+  const startGazeboBridge = useCallback(async () => {
+    setGazeboBridgeError(null);
+    const source = connectionState.isConnected ? 'telemetry' : 'mavlink';
+    const result = await window.electronAPI.gazeboBridgeStart({
+      source,
+      mavlinkUrl: 'tcp:127.0.0.1:5760',
+      output: 'udp-json',
+      gazeboHost,
+      gazeboPort,
+      modelName: gazeboModelName,
+      rateHz: 20,
+    });
+    if (!result.success) {
+      setGazeboBridgeError(result.error ?? 'Failed to start Gazebo bridge');
+    }
+    const status = await window.electronAPI.gazeboBridgeStatus();
+    setGazeboBridgeStatus(status);
+  }, [connectionState.isConnected, gazeboHost, gazeboModelName, gazeboPort]);
+
+  const stopGazeboBridge = useCallback(async () => {
+    setGazeboBridgeError(null);
+    await window.electronAPI.gazeboBridgeStop();
+    const status = await window.electronAPI.gazeboBridgeStatus();
+    setGazeboBridgeStatus(status);
+  }, []);
 
   // Fetch the upstream frame catalog once on mount. Stays cached after first
   // load — refreshFrames is the explicit user action behind the refresh icon.
@@ -214,6 +254,7 @@ export default function ArduPilotSitlTab() {
 
   return (
     <div className="flex flex-col gap-4">
+      <h1>123</h1>
       {/* Platform not supported banner */}
 
       {/* Platform Error */}
@@ -495,6 +536,183 @@ export default function ArduPilotSitlTab() {
         </div>
       </div>
 
+      {/* Gazebo Python plugin — attaches to an already-running SITL or real FC */}
+      <div className="bg-surface-input border border-emerald-500/30 rounded-lg p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${gazeboBridgeStatus.running ? 'bg-emerald-400' : 'bg-content-tertiary'}`} />
+              <h3 className="text-sm font-medium text-content">Gazebo Python plugin</h3>
+              <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-emerald-500/10 text-emerald-300">
+                attach while running
+              </span>
+            </div>
+            <p className="mt-1.5 text-xs text-content-tertiary leading-relaxed max-w-2xl">
+              Start this after SITL is running or after a drone is connected. ArduDeck streams the current pose to Python,
+              and the bridge publishes JSON pose packets to your Gazebo-side receiver.
+            </p>
+            {gazeboBridgeStatus.running && (
+              <p className="mt-1.5 text-[10px] text-emerald-300 font-mono">
+                Running pid={gazeboBridgeStatus.pid ?? 'unknown'} → {gazeboBridgeStatus.config?.gazeboHost}:{gazeboBridgeStatus.config?.gazeboPort}
+              </p>
+            )}
+            {gazeboBridgeError && (
+              <p className="mt-1.5 text-xs text-red-400">{gazeboBridgeError}</p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2 w-full lg:w-[30rem]">
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="block text-[10px] text-content-secondary mb-1">Host</label>
+                <input
+                  type="text"
+                  value={gazeboHost}
+                  onChange={(e) => setGazeboHost(e.target.value)}
+                  disabled={gazeboBridgeStatus.running}
+                  className="w-full px-2 py-1.5 text-xs font-mono bg-surface-raised text-content border border rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-content-secondary mb-1">Port</label>
+                <input
+                  type="number"
+                  value={gazeboPort}
+                  min={1}
+                  max={65535}
+                  onChange={(e) => setGazeboPort(Math.max(1, Math.min(65535, parseInt(e.target.value) || 9002)))}
+                  disabled={gazeboBridgeStatus.running}
+                  className="w-full px-2 py-1.5 text-xs font-mono bg-surface-raised text-content border border rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-content-secondary mb-1">Model</label>
+                <input
+                  type="text"
+                  value={gazeboModelName}
+                  onChange={(e) => setGazeboModelName(e.target.value)}
+                  disabled={gazeboBridgeStatus.running}
+                  className="w-full px-2 py-1.5 text-xs font-mono bg-surface-raised text-content border border rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50"
+                />
+              </div>
+            </div>
+
+            {gazeboBridgeStatus.running ? (
+              <button
+                type="button"
+                onClick={() => void stopGazeboBridge()}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-red-500/50 bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-500 transition-colors"
+              >
+                Stop Gazebo plugin
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={!canAttachGazebo}
+                onClick={() => void startGazeboBridge()}
+                title={canAttachGazebo ? 'Attach Gazebo to current SITL/drone telemetry' : 'Start SITL or connect a drone first'}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-lg border-2 border-emerald-400/80 bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-900/40 hover:bg-emerald-500 hover:border-emerald-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+                Подключить Gazebo к работающему дрону/SITL
+              </button>
+            )}
+            <p className="text-[10px] text-content-tertiary leading-relaxed">
+              If ArduDeck is connected, source = current telemetry. If only local SITL is running, source = MAVLink tcp:127.0.0.1:5760.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* External physics (Gazebo / JSBSim / X-Plane) — optional; default is built-in SITL */}
+      <div className="bg-surface-input border border-subtle rounded-lg p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-3">
+          <h3 className="text-sm font-medium text-content shrink-0">External physics</h3>
+          <div className="flex flex-col sm:items-end gap-2 w-full sm:w-auto sm:max-w-md">
+            {simulator === 'gazebo' ? (
+              <div className="flex flex-wrap items-center gap-2 w-full sm:justify-end">
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/50 bg-emerald-500/15 px-3 py-2 text-xs font-medium text-emerald-300">
+                  <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  External Gazebo physics selected — Start SITL will boot into that backend
+                </span>
+                <button
+                  type="button"
+                  disabled={isRunning || isStarting}
+                  onClick={() => {
+                    setSimulator('none');
+                  }}
+                  className="px-3 py-2 text-xs font-medium text-content-secondary border border-subtle rounded-lg hover:bg-surface-raised hover:text-content transition-colors disabled:opacity-50"
+                >
+                  Use built-in SITL physics
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={isRunning || isStarting}
+                onClick={() => {
+                  setSimulator('gazebo');
+                  if (!simAddress.includes(':')) {
+                    setSimAddress('127.0.0.1:9002');
+                  }
+                  queueMicrotask(() => simAddressInputRef.current?.focus());
+                }}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg border-2 border-emerald-400/80 bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-900/40 hover:bg-emerald-500 hover:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 focus:ring-offset-[var(--bg-input)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <svg className="w-5 h-5 shrink-0 opacity-95" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+                Use Gazebo as SITL physics on next start
+              </button>
+            )}
+          </div>
+        </div>
+        <p className="text-xs text-content-tertiary mb-3 leading-relaxed">
+          Built-in uses ArduPilot&apos;s packaged dynamics. For Gazebo in Docker, SITL stays on this host and connects with{' '}
+          <code className="text-[11px] bg-surface-inset px-1 rounded">--sim gazebo</code> and{' '}
+          <code className="text-[11px] bg-surface-inset px-1 rounded">--sim-address</code>.
+          Choose a Gazebo frame (e.g. <span className="font-mono text-[11px]">gazebo-iris</span>) when using Iris worlds from the ArduPilot Gazebo plugin.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs text-content-secondary mb-1">Simulator</label>
+            <select
+              value={simulator}
+              onChange={(e) => setSimulator(e.target.value as ArduPilotSimulatorType)}
+              disabled={isRunning || isStarting}
+              className="w-full px-2 py-1.5 text-sm bg-surface-raised text-content border border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50"
+            >
+              <option value="none">Built-in (default)</option>
+              <option value="gazebo">Gazebo (plugin / Docker)</option>
+              <option value="jsbsim">JSBSim</option>
+              <option value="xplane">X-Plane</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-content-secondary mb-1">Sim address (host:port)</label>
+            <input
+              ref={simAddressInputRef}
+              type="text"
+              value={simAddress}
+              onChange={(e) => setSimAddress(e.target.value)}
+              disabled={isRunning || isStarting || simulator === 'none'}
+              placeholder={simulator === 'gazebo' ? '127.0.0.1:9002' : '127.0.0.1'}
+              className="w-full px-2 py-1.5 text-sm font-mono bg-surface-raised text-content border border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50"
+            />
+            {simulator === 'gazebo' && (
+              <p className="mt-1.5 text-[10px] text-content-tertiary leading-relaxed">
+                Publish the plugin FDM port from the container (e.g. <span className="font-mono">-p 9002:9002/udp</span>). Use{' '}
+                <span className="font-mono">host.docker.internal:port</span> from a bridge inside Docker if needed.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Binary Status & Download */}
       <div className="bg-surface-input border border-subtle rounded-lg p-4">
         <div className="flex items-center justify-between">
@@ -506,7 +724,7 @@ export default function ArduPilotSitlTab() {
               </span>
               <p className="text-xs text-content-secondary">
                 {binaryInfo?.exists
-                  ? `Ready at ${binaryInfo.path?.split('/').pop()}`
+                  ? `Ready at ${binaryInfo.path?.split(/[/\\]/).pop()}`
                   : 'Binary not installed'}
               </p>
             </div>
@@ -577,7 +795,14 @@ export default function ArduPilotSitlTab() {
             {!isRunning ? (
               <button
                 onClick={start}
-                disabled={!isStatusChecked || isStarting || !binaryInfo?.exists || connectionState.isConnected}
+                disabled={
+                  !isStatusChecked ||
+                  isStarting ||
+                  !binaryInfo?.exists ||
+                  connectionState.isConnected ||
+                  (simulator !== 'none' && !simAddress.trim()) ||
+                  (simulator === 'gazebo' && !simAddress.includes(':'))
+                }
                 title={
                   !isStatusChecked
                     ? 'Checking SITL status…'
@@ -587,7 +812,11 @@ export default function ArduPilotSitlTab() {
                         ? 'Install the SITL binary (Download or Install from file)'
                         : connectionState.isConnected
                           ? 'Disconnect the flight controller (MSP) to run local SITL'
-                          : undefined
+                          : simulator !== 'none' && !simAddress.trim()
+                            ? 'Set a sim address for the external physics backend'
+                            : simulator === 'gazebo' && !simAddress.includes(':')
+                              ? 'Gazebo requires host:port (e.g. 127.0.0.1:9002)'
+                              : undefined
                 }
                 className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
@@ -685,8 +914,8 @@ export default function ArduPilotSitlTab() {
 
           {/* Main sticks */}
           <div className="grid grid-cols-4 gap-3 mb-3">
-            {/* Throttle — RC input to SITL; AUTO/mission uses FC throttle, so this can stay low */}
-            <div title="RC channel to the simulator. In AUTO the flight stack commands motors; thrust is not shown here — use telemetry THR (VFR_HUD).">
+            {/* Throttle */}
+            <div>
               <label className="block text-xs text-content-secondary mb-1">
                 Throttle <span className="text-content-tertiary">{normalizedToPWM(rcState.throttle)}</span>
               </label>

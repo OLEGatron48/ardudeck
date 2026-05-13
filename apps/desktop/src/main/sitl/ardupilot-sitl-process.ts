@@ -299,6 +299,15 @@ class ArduPilotSitlProcessManager {
         config.customFrameMotors === 6 ? 'hexa' :
         'quad';
       args.push(`-M${typePrefix}:${config.customFramePath}`);
+    } else if (config.simulator === 'gazebo') {
+      // Gazebo + ArduPilot plugin: physics from the plugin. Copter/plane Iris/Zephyr
+      // examples use `--model JSON` in sim_vehicle.py; rovers/subs keep the frame name.
+      if (config.vehicleType === 'copter' || config.vehicleType === 'plane') {
+        args.push('-MJSON');
+      } else {
+        const model = config.model || DEFAULT_MODELS[config.vehicleType];
+        args.push(`-M${model}`);
+      }
     } else {
       const model = config.model || DEFAULT_MODELS[config.vehicleType];
       args.push(`-M${model}`);
@@ -320,8 +329,8 @@ class ArduPilotSitlProcessManager {
 
     if (config.simulator && config.simulator !== 'none') {
       args.push('--sim', config.simulator);
-      if (config.simAddress) {
-        args.push('--sim-address', config.simAddress);
+      if (config.simAddress?.trim()) {
+        args.push('--sim-address', config.simAddress.trim());
       }
     }
 
@@ -353,6 +362,28 @@ class ArduPilotSitlProcessManager {
           success: false,
           error: `SITL binary not found at ${binaryPath}. Please download it first.`,
         };
+      }
+
+      if (config.simulator === 'gazebo') {
+        if (config.customFramePath) {
+          return {
+            success: false,
+            error: 'Gazebo external sim cannot be combined with a custom JSON frame. Clear the custom frame or set External physics to Built-in.',
+          };
+        }
+        const addr = config.simAddress?.trim();
+        if (!addr) {
+          return {
+            success: false,
+            error: 'Gazebo external sim requires a sim address (e.g. 127.0.0.1:9002 matching the plugin port published from Docker).',
+          };
+        }
+        if (!addr.includes(':')) {
+          return {
+            success: false,
+            error: 'Gazebo sim address must include host and port (e.g. 127.0.0.1:9002).',
+          };
+        }
       }
 
       // Make binary executable (macOS/Linux)

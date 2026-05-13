@@ -735,7 +735,14 @@ export const useArduPilotSitlStore = create<ArduPilotSitlStore>()(
       setHomeLocation: (loc) => set({ homeLocation: loc }),
       setSpeedup: (speedup) => set({ speedup }),
       setWipeOnStart: (wipe) => set({ wipeOnStart: wipe }),
-      setSimulator: (sim) => set({ simulator: sim }),
+      setSimulator: (sim) =>
+        set((state) => ({
+          simulator: sim,
+          simAddress:
+            sim === 'gazebo' && !state.simAddress.includes(':')
+              ? '127.0.0.1:9002'
+              : state.simAddress,
+        })),
       setSimAddress: (address) => set({ simAddress: address }),
 
       // RC Actions

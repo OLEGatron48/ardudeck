@@ -1,0 +1,9 @@
+[project]
+name = "ardudeck-gazebo-mavlink-bridge"
+version = "0.1.0"
+description = "ArduDeck Gazebo visualisation bridge for already-running SITL or FC connections"
+requires-python = ">=3.10"
+dependencies = ["pymavlink>=2.4.40"]
+
+[project.scripts]
+ardudeck-gazebo-bridge = "gazebo_mavlink_bridge:main"

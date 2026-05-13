@@ -2,6 +2,19 @@
 # Тома: E:/Docker/gazebo. Одинаковый GZ_PARTITION у сервера и GUI — см. ответы ros_gz / transport.
 # Сервер: docker compose up -d gz-sim-server
 # С GUI:   docker compose --profile gui up -d  (нужен X-сервер на Windows, например VcXsrv, DISPLAY ниже)
+#
+# ArduPilot SITL на хосте (ArduDeck): External physics = Gazebo, sim address = 127.0.0.1:<FDM_port>.
+# Пробросьте порт плагина из контейнера на хост, например для типичного FDM UDP:
+#   ports:
+#     - "9002:9002/udp"
+# (точный порт/протокол — из вашего .sdf / ardupilot_gazebo README; Harmonic и legacy Gazebo 11 отличаются.)
+#
+# Python bridge mode (кнопка "Подключить Gazebo к работающему дрону/SITL"):
+# ArduDeck запускает resources/python/gazebo-mavlink-bridge и шлёт pose JSON на Gazebo receiver.
+# Это НЕ MAVLink 5760 и НЕ --sim gazebo FDM. Если receiver живёт внутри этого контейнера,
+# пробросьте отдельный UDP порт, например:
+#   ports:
+#     - "9002:9002/udp"
 
 services:
   gz-sim-server:
